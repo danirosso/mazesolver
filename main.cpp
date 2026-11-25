@@ -13,6 +13,7 @@
 #define WALL -1
 #define DEFAULT_FLOOR 0
 #define WALKED_FLOOR 1
+#define SOLVED_FLOOR -2
 
 typedef struct{
     int x;
@@ -33,6 +34,8 @@ typedef struct{
 } WalkedPath;
 void pushPosition(Position start, WalkedPath *path);
 //pushes positions dinamically into the path
+void popPosition(WalkedPath *path);
+//not an actual pop, just sets the index back
 //https://youtu.be/95M6V3mZgrI
 
 Maze convertFileToMaze(FILE *f);
@@ -49,7 +52,7 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
 //returns a X/Y position relative to the maze
 void printPosCursor(Vector2 *mousePos, Position *pos);
 //prints a position around the mouse
-bool solveMaze(Position *startPos, Position *sqSize, Maze *m, WalkedPath *path, Position start, Position end, int floorPass);
+bool solveMaze(Maze *m, WalkedPath *path, Position start, Position end, int floorPass);
 //it solves the maze <shrug>
 
 int main(int argc, char **argv)
@@ -67,6 +70,7 @@ int main(int argc, char **argv)
     }
 
     Maze maze = convertFileToMaze(mazeIn);
+    Maze solvedMaze = maze;
     Position sqSize, startPos;
     calcSizes(&maze, &startPos, &sqSize);
 
@@ -90,13 +94,16 @@ int main(int argc, char **argv)
     while (!WindowShouldClose()){
 
         if (!solved && startSetd && endSetd && goSetd){
-            solved = solveMaze(&startPos, &sqSize, &maze, &solvedPath, start, end, WALKED_FLOOR);
+            solved = solveMaze(&maze, &solvedPath, start, end, WALKED_FLOOR);
+            for(int i = 0; i < solvedPath.index; i++){
+                maze.maze[solvedPath.walked[i].y][solvedPath.walked[i].x]= SOLVED_FLOOR;
+            }
         }
 
         BeginDrawing();
         Vector2 mousePos = GetMousePosition();
         ClearBackground(BLACK);
-        
+
         drawMaze(&maze, &startPos, &sqSize);
 
         if(GuiButton((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*2, MENU_WIDTH - BORDER_WIDTH, BORDER_WIDTH*2}, "Start position") && !startButtonSelected){
@@ -150,11 +157,14 @@ int main(int argc, char **argv)
                 goSetd = true;
             }
         }
-        for(int i = 0; i < solvedPath.index; i++){
-            char txt[10];
-            snprintf(txt, 10, "X:%2d Y:%2d", solvedPath.walked[i].x, solvedPath.walked[i].y);
-            DrawText(txt, BORDER_WIDTH  + 100 ,BORDER_HEIGHT +  10*i, 12, RED);
-        }
+
+            for(int i = 0; i < solvedPath.index; i++){
+                char txt[10];
+                snprintf(txt, 10, "X:%2d Y:%2d", solvedPath.walked[i].x, solvedPath.walked[i].y);
+                DrawText(txt, BORDER_WIDTH  + 100 ,BORDER_HEIGHT +  10*i, 12, RED);
+            }
+
+
 
 
 
@@ -197,10 +207,8 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
     return false;
 }
 
-bool solveMaze (Position *startPos, Position *sqSize, Maze *m, WalkedPath *path, Position start, Position end, int floorPass)
+bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int floorPass)
 {
-    bool fork = false;
-
     if(start.x < 0 || start.x >= m->columns || start.y < 0 || start.y >= m->lines){
         return false;
     }
@@ -208,18 +216,26 @@ bool solveMaze (Position *startPos, Position *sqSize, Maze *m, WalkedPath *path,
     if(m->maze[start.y][start.x] != DEFAULT_FLOOR){
         return false;
     }
-    
+
     m->maze[start.y][start.x] = floorPass;
     pushPosition(start, path);
 
     if(start.y == end.y && start.x == end.x) return true;
 
-    if (solveMaze(startPos, sqSize, m, path, (Position){start.x + 1, start.y}, end, floorPass + 1)) return true;
-    if (solveMaze(startPos, sqSize, m, path, (Position){start.x - 1, start.y}, end, floorPass + 1)) return true;
-    if (solveMaze(startPos, sqSize, m, path, (Position){start.x, start.y + 1}, end, floorPass + 1)) return true;
-    if (solveMaze(startPos, sqSize, m, path, (Position){start.x, start.y - 1}, end, floorPass + 1)) return true;
+    if (solveMaze(m, path, (Position){start.x + 1, start.y}, end, floorPass + 1)) return true;
+    if (solveMaze(m, path, (Position){start.x - 1, start.y}, end, floorPass + 1)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y + 1}, end, floorPass + 1)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y - 1}, end, floorPass + 1)) return true;
 
+    popPosition(path);
     return false;
+}
+
+void popPosition(WalkedPath *path)
+{
+    if(path->index == 0) return;
+
+    path->index--;
 }
 
 void pushPosition(Position start, WalkedPath *path)
@@ -257,7 +273,11 @@ void drawMaze (Maze *m, Position *startPos, Position *sqSize)
                 DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
                         sqSize->x - 1, sqSize->y - 1, GRAY);
 
-            else 
+            else if (m->maze[i][j] == SOLVED_FLOOR)
+                DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
+                        sqSize->x - 1, sqSize->y - 1, VIOLET);
+
+            else if(m->maze[i][j] > DEFAULT_FLOOR)
                 DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
                         sqSize->x - 1, sqSize->y - 1, (Color){0, 255, 0, MIN(10 + m->maze[i][j] * 2, 255)});
         }
