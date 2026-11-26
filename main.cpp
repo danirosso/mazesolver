@@ -10,10 +10,14 @@
 #define BORDER_HEIGHT 20
 #define BORDER_WIDTH 15
 
-#define WALL -1
+#define WALL -2
 #define DEFAULT_FLOOR 0
 #define WALKED_FLOOR 1
-#define SOLVED_FLOOR -2
+#define SOLVED_FLOOR -1
+
+#define NORMAL_MAZE 0
+#define BEST_MAZE 1
+#define CLEAN_MAZE 2
 
 typedef struct{
     int x;
@@ -44,7 +48,7 @@ void freeMaze(Maze *m);
 //frees the allocated maze
 void calcSizes(Maze *m, Position *startPos, Position *sqSize);
 //calculates the proportional sizes to draw the maze
-void drawMaze(Maze *m, Position *startPos, Position *sqSize);
+void drawMaze(Maze *m, Position *startPos, Position *sqSize, int mazeType);
 //draws a maze in the window
 bool insideMaze(Vector2 *mousePos, Position *startPos, Position *sqSize, Maze *maze);
 //returns true if the cursor is inside the maze area
@@ -52,7 +56,7 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
 //returns a X/Y position relative to the maze
 void printPosCursor(Vector2 *mousePos, Position *pos);
 //prints a position around the mouse
-bool solveMaze(Maze *m, WalkedPath *path, Position start, Position end, int floorPass);
+bool solveMaze(Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize);
 //it solves the maze <shrug>
 
 int main(int argc, char **argv)
@@ -70,7 +74,7 @@ int main(int argc, char **argv)
     }
 
     Maze maze = convertFileToMaze(mazeIn);
-    Maze solvedMaze = maze;
+    
     Position sqSize, startPos;
     calcSizes(&maze, &startPos, &sqSize);
 
@@ -87,24 +91,34 @@ int main(int argc, char **argv)
 
     bool goSetd = false;
 
+    bool showBestMaze = false;
+    bool showCleanMaze = false;
+
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "maze");
     SetTargetFPS(60);
     GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
 
+
     while (!WindowShouldClose()){
 
         if (!solved && startSetd && endSetd && goSetd){
-            solved = solveMaze(&maze, &solvedPath, start, end, WALKED_FLOOR);
+            solved = solveMaze(&maze, &solvedPath, start, end, WALKED_FLOOR, &startPos, &sqSize);
             for(int i = 0; i < solvedPath.index; i++){
-                maze.maze[solvedPath.walked[i].y][solvedPath.walked[i].x]= SOLVED_FLOOR;
+                maze.maze[solvedPath.walked[i].y][solvedPath.walked[i].x] = SOLVED_FLOOR;
             }
         }
 
         BeginDrawing();
+
         Vector2 mousePos = GetMousePosition();
         ClearBackground(BLACK);
 
-        drawMaze(&maze, &startPos, &sqSize);
+        if(solved){
+            if(showCleanMaze) drawMaze(&maze, &startPos, &sqSize, CLEAN_MAZE);
+            else if(showBestMaze) drawMaze(&maze, &startPos, &sqSize, BEST_MAZE);
+            else drawMaze(&maze, &startPos, &sqSize, NORMAL_MAZE);
+        } else
+            drawMaze(&maze, &startPos, &sqSize, NORMAL_MAZE);
 
         if(GuiButton((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*2, MENU_WIDTH - BORDER_WIDTH, BORDER_WIDTH*2}, "Start position") && !startButtonSelected){
             endButtonSelected = false;
@@ -158,15 +172,12 @@ int main(int argc, char **argv)
             }
         }
 
-            for(int i = 0; i < solvedPath.index; i++){
-                char txt[10];
-                snprintf(txt, 10, "X:%2d Y:%2d", solvedPath.walked[i].x, solvedPath.walked[i].y);
-                DrawText(txt, BORDER_WIDTH  + 100 ,BORDER_HEIGHT +  10*i, 12, RED);
-            }
-
-
-
-
+        if(solved){
+            if(GuiCheckBox((Rectangle)(Rectangle){BORDER_WIDTH, BORDER_HEIGHT*10, BORDER_WIDTH, BORDER_HEIGHT}, "Clear", &showCleanMaze))
+                showBestMaze = false; 
+            if(GuiCheckBox((Rectangle)(Rectangle){BORDER_WIDTH, BORDER_HEIGHT*12, BORDER_WIDTH, BORDER_HEIGHT}, "Walk", &showBestMaze))
+                showCleanMaze = false;
+        }
 
         EndDrawing();
     }
@@ -207,8 +218,12 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
     return false;
 }
 
-bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int floorPass)
+bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize)
 {
+    BeginDrawing();
+    drawMaze(m, startPos , sqSize, NORMAL_MAZE);
+    EndDrawing();
+
     if(start.x < 0 || start.x >= m->columns || start.y < 0 || start.y >= m->lines){
         return false;
     }
@@ -221,14 +236,14 @@ bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int flo
     pushPosition(start, path);
 
     if(start.y == end.y && start.x == end.x) return true;
-
-    if (solveMaze(m, path, (Position){start.x + 1, start.y}, end, floorPass + 1)) return true;
-    if (solveMaze(m, path, (Position){start.x - 1, start.y}, end, floorPass + 1)) return true;
-    if (solveMaze(m, path, (Position){start.x, start.y + 1}, end, floorPass + 1)) return true;
-    if (solveMaze(m, path, (Position){start.x, start.y - 1}, end, floorPass + 1)) return true;
+    if (solveMaze(m, path, (Position){start.x + 1, start.y}, end, floorPass + 1, startPos, sqSize)) return true;
+    if (solveMaze(m, path, (Position){start.x - 1, start.y}, end, floorPass + 1, startPos, sqSize)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y + 1}, end, floorPass + 1, startPos, sqSize)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y - 1}, end, floorPass + 1, startPos, sqSize)) return true;
 
     popPosition(path);
     return false;
+
 }
 
 void popPosition(WalkedPath *path)
@@ -261,7 +276,7 @@ void calcSizes (Maze *m, Position *startPos, Position *sqSize)
     sqSize->y = (float)(WINDOW_HEIGHT - BORDER_HEIGHT - startPos->y) / m->lines;
 }
 
-void drawMaze (Maze *m, Position *startPos, Position *sqSize)
+void drawMaze (Maze *m, Position *startPos, Position *sqSize, int mazeType)
 {
     for (int i = 0; i < (m->lines); i++){
         for (int j = 0; j < (m->columns); j++){
@@ -273,13 +288,17 @@ void drawMaze (Maze *m, Position *startPos, Position *sqSize)
                 DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
                         sqSize->x - 1, sqSize->y - 1, GRAY);
 
-            else if (m->maze[i][j] == SOLVED_FLOOR)
+            else if (m->maze[i][j] == SOLVED_FLOOR && mazeType != CLEAN_MAZE)
                 DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
                         sqSize->x - 1, sqSize->y - 1, VIOLET);
 
-            else if(m->maze[i][j] > DEFAULT_FLOOR)
+            else if (m->maze[i][j] > DEFAULT_FLOOR && mazeType != CLEAN_MAZE && mazeType != BEST_MAZE)
                 DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
                         sqSize->x - 1, sqSize->y - 1, (Color){0, 255, 0, MIN(10 + m->maze[i][j] * 2, 255)});
+
+            else if (m->maze[i][j] > WALL && (mazeType == CLEAN_MAZE || mazeType == BEST_MAZE))
+                DrawRectangle(startPos->x + sqSize->x*j, startPos->y + sqSize->y*i,
+                        sqSize->x - 1, sqSize->y - 1, GRAY);
         }
     }
 }
