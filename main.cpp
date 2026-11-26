@@ -56,8 +56,10 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
 //returns a X/Y position relative to the maze
 void printPosCursor(Vector2 *mousePos, Position *pos);
 //prints a position around the mouse
-bool solveMaze(Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize);
+bool solveMaze(Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize, bool *skip);
 //it solves the maze <shrug>
+void resetMaze(Maze *m);
+//resets every tile that's not WALL to DEFAULT_FLOOR
 
 int main(int argc, char **argv)
 {
@@ -90,6 +92,8 @@ int main(int argc, char **argv)
     bool endSetd = false;
 
     bool goSetd = false;
+    bool skip = false;
+    bool wentWrong = false;
 
     bool showBestMaze = false;
     bool showCleanMaze = false;
@@ -102,10 +106,17 @@ int main(int argc, char **argv)
     while (!WindowShouldClose()){
 
         if (!solved && startSetd && endSetd && goSetd){
-            solved = solveMaze(&maze, &solvedPath, start, end, WALKED_FLOOR, &startPos, &sqSize);
-            for(int i = 0; i < solvedPath.index; i++){
+            if (!solveMaze(&maze, &solvedPath, start, end, WALKED_FLOOR, &startPos, &sqSize, &skip)){
+                goSetd = false;
+                wentWrong = true;
+                drawMaze(&maze, &startPos, &sqSize, CLEAN_MAZE);
+            } else 
+                solved = true;
+
+            for(int i = 0; i < solvedPath.index; i++)
                 maze.maze[solvedPath.walked[i].y][solvedPath.walked[i].x] = SOLVED_FLOOR;
-            }
+
+            skip = false;
         }
 
         BeginDrawing();
@@ -169,13 +180,17 @@ int main(int argc, char **argv)
         if(startSetd && endSetd && !solved){
             if (GuiButton((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*10, MENU_WIDTH - BORDER_WIDTH, BORDER_WIDTH*2}, "Solve Maze")){
                 goSetd = true;
+                if(wentWrong){
+                    resetMaze(&maze);
+                    wentWrong = false;
+                }
             }
         }
 
         if(solved){
-            if(GuiCheckBox((Rectangle)(Rectangle){BORDER_WIDTH, BORDER_HEIGHT*10, BORDER_WIDTH, BORDER_HEIGHT}, "Clear", &showCleanMaze))
+            if(GuiCheckBox((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*10, BORDER_WIDTH, BORDER_HEIGHT}, "Clear", &showCleanMaze))
                 showBestMaze = false; 
-            if(GuiCheckBox((Rectangle)(Rectangle){BORDER_WIDTH, BORDER_HEIGHT*12, BORDER_WIDTH, BORDER_HEIGHT}, "Walk", &showBestMaze))
+            if(GuiCheckBox((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*12, BORDER_WIDTH, BORDER_HEIGHT}, "Walk", &showBestMaze))
                 showCleanMaze = false;
         }
 
@@ -187,6 +202,12 @@ int main(int argc, char **argv)
     return 0;
 }
 
+void resetMaze(Maze *m)
+{
+    for (int i = 0; i < m->lines; i++)
+        for (int j = 0; j < m->columns; j++)
+            if (m->maze[i][j] != WALL) m->maze[i][j] = DEFAULT_FLOOR;
+}
 
 void printPosCursor (Vector2 *mousePos, Position *pos)
 {
@@ -218,11 +239,17 @@ bool convertFromCursor(Position *pos, Vector2 *mousePos, Position *startPos, Pos
     return false;
 }
 
-bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize)
+bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int floorPass, Position *startPos, Position *sqSize, bool *skip)
 {
-    BeginDrawing();
-    drawMaze(m, startPos , sqSize, NORMAL_MAZE);
-    EndDrawing();
+    if(path->index == m->tiles) return false;
+
+    if(!(*skip)){
+        BeginDrawing();
+        drawMaze(m, startPos , sqSize, NORMAL_MAZE);
+        if (GuiButton((Rectangle){BORDER_WIDTH, BORDER_HEIGHT*10, MENU_WIDTH - BORDER_WIDTH, BORDER_WIDTH*2}, "Skip"))
+            *skip = true;
+        EndDrawing();
+    }
 
     if(start.x < 0 || start.x >= m->columns || start.y < 0 || start.y >= m->lines){
         return false;
@@ -236,14 +263,14 @@ bool solveMaze (Maze *m, WalkedPath *path, Position start, Position end, int flo
     pushPosition(start, path);
 
     if(start.y == end.y && start.x == end.x) return true;
-    if (solveMaze(m, path, (Position){start.x + 1, start.y}, end, floorPass + 1, startPos, sqSize)) return true;
-    if (solveMaze(m, path, (Position){start.x - 1, start.y}, end, floorPass + 1, startPos, sqSize)) return true;
-    if (solveMaze(m, path, (Position){start.x, start.y + 1}, end, floorPass + 1, startPos, sqSize)) return true;
-    if (solveMaze(m, path, (Position){start.x, start.y - 1}, end, floorPass + 1, startPos, sqSize)) return true;
+
+    if (solveMaze(m, path, (Position){start.x + 1, start.y}, end, floorPass + 1, startPos, sqSize, skip)) return true;
+    if (solveMaze(m, path, (Position){start.x - 1, start.y}, end, floorPass + 1, startPos, sqSize, skip)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y + 1}, end, floorPass + 1, startPos, sqSize, skip)) return true;
+    if (solveMaze(m, path, (Position){start.x, start.y - 1}, end, floorPass + 1, startPos, sqSize, skip)) return true;
 
     popPosition(path);
     return false;
-
 }
 
 void popPosition(WalkedPath *path)
